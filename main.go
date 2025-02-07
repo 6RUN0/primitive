@@ -31,7 +31,6 @@ var (
 	Workers      int
 	Max          float64
 	Maxpct       float64
-	rfs          float64
 	Nth          int
 	Repeat       int
 	V, VV        bool
@@ -143,7 +142,7 @@ func main() {
 	}
 
 	// seed random number generator
-	rand.Seed(time.Now().UTC().UnixNano())
+	rand.New(rand.NewSource(time.Now().UTC().UnixNano()))
 
 	// determine worker count
 	if Workers < 1 {
@@ -192,8 +191,7 @@ func main() {
 			nps := primitive.NumberString(float64(n) / time.Since(t).Seconds())
 			elapsed := time.Since(start).Seconds()
 
-			var pctScore float64
-			pctScore = 100 - (model.Score / startScore * 100)
+			var pctScore float64 = 100 - (model.Score / startScore * 100)
 
 			primitive.Log(1, "%d: t=%.3f, score=%.6f, n=%d, n/s=%s, percent score=%.3f%%\n", frame, elapsed, model.Score, n, nps, pctScore)
 

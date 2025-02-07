@@ -9,7 +9,6 @@ import (
 	"image/gif"
 	"image/jpeg"
 	"image/png"
-	"io/ioutil"
 	"math"
 	"os"
 	"os/exec"
@@ -85,7 +84,7 @@ func SaveGIF(path string, frames []image.Image, delay, lastDelay int) error {
 }
 
 func SaveGIFImageMagick(path string, frames []image.Image, delay, lastDelay int) error {
-	dir, err := ioutil.TempDir("", "")
+	dir, err := os.MkdirTemp("", "")
 	if err != nil {
 		return err
 	}

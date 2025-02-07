@@ -23,7 +23,7 @@ func HillClimb(state Annealable, maxAge int) Annealable {
 		if energy >= bestEnergy {
 			state.UndoMove(undo)
 		} else {
-			//fmt.Printf("step: %d, energy: %.6f\n", step, energy)
+			// fmt.Printf("step: %d, energy: %.6f\n", step, energy)
 			bestEnergy = energy
 			bestState = state.Copy()
 			age = -1
