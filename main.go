@@ -14,6 +14,7 @@ import (
 
 	"github.com/bmaltais/primitive/primitive"
 	"github.com/nfnt/resize"
+	_ "golang.org/x/image/webp"
 )
 
 var (
