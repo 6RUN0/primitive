@@ -8,6 +8,7 @@ import (
 	"github.com/golang/freetype/raster"
 )
 
+// Ellipse is an axis-aligned ellipse. With Circle set both radii move together.
 type Ellipse struct {
 	Worker *Worker
 	X, Y   int
@@ -15,6 +16,7 @@ type Ellipse struct {
 	Circle bool
 }
 
+// NewRandomEllipse returns an ellipse with a random center and radii up to 32.
 func NewRandomEllipse(worker *Worker) *Ellipse {
 	rnd := worker.Rnd
 	x := rnd.Intn(worker.W)
@@ -24,6 +26,7 @@ func NewRandomEllipse(worker *Worker) *Ellipse {
 	return &Ellipse{worker, x, y, rx, ry, false}
 }
 
+// NewRandomCircle returns a circle with a random center and a radius up to 32.
 func NewRandomCircle(worker *Worker) *Ellipse {
 	rnd := worker.Rnd
 	x := rnd.Intn(worker.W)
@@ -32,22 +35,25 @@ func NewRandomCircle(worker *Worker) *Ellipse {
 	return &Ellipse{worker, x, y, r, r, true}
 }
 
-func (c *Ellipse) Draw(dc *gg.Context, scale float64) {
+// Draw adds the shape to the path of dc; dc applies the scale.
+func (c *Ellipse) Draw(dc *gg.Context, _ float64) {
 	dc.DrawEllipse(float64(c.X), float64(c.Y), float64(c.Rx), float64(c.Ry))
 	dc.Fill()
 }
 
+// SVG returns the element of the shape with attrs added.
 func (c *Ellipse) SVG(attrs string) string {
-	return fmt.Sprintf(
-		"<ellipse %s cx=\"%d\" cy=\"%d\" rx=\"%d\" ry=\"%d\" />",
-		attrs, c.X, c.Y, c.Rx, c.Ry)
+	return buildSVGElement("ellipse", attrs, fmt.Sprintf(
+		"cx=\"%d\" cy=\"%d\" rx=\"%d\" ry=\"%d\"", c.X, c.Y, c.Rx, c.Ry))
 }
 
+// Copy returns an independent copy.
 func (c *Ellipse) Copy() Shape {
 	a := *c
 	return &a
 }
 
+// Mutate moves the center or changes a radius. Radii stay at least 1.
 func (c *Ellipse) Mutate() {
 	w := c.Worker.W
 	h := c.Worker.H
@@ -69,6 +75,7 @@ func (c *Ellipse) Mutate() {
 	}
 }
 
+// Rasterize returns the covered scanlines, cropped to the image.
 func (c *Ellipse) Rasterize() []Scanline {
 	w := c.Worker.W
 	h := c.Worker.H
@@ -99,6 +106,7 @@ func (c *Ellipse) Rasterize() []Scanline {
 	return lines
 }
 
+// RotatedEllipse is an ellipse rotated by Angle degrees around its center.
 type RotatedEllipse struct {
 	Worker *Worker
 	X, Y   float64
@@ -106,6 +114,8 @@ type RotatedEllipse struct {
 	Angle  float64
 }
 
+// NewRandomRotatedEllipse returns a rotated ellipse with random center, radii up
+// to 32 and angle.
 func NewRandomRotatedEllipse(worker *Worker) *RotatedEllipse {
 	rnd := worker.Rnd
 	x := rnd.Float64() * float64(worker.W)
@@ -116,7 +126,8 @@ func NewRandomRotatedEllipse(worker *Worker) *RotatedEllipse {
 	return &RotatedEllipse{worker, x, y, rx, ry, a}
 }
 
-func (c *RotatedEllipse) Draw(dc *gg.Context, scale float64) {
+// Draw adds the shape to the path of dc; dc applies the scale.
+func (c *RotatedEllipse) Draw(dc *gg.Context, _ float64) {
 	dc.Push()
 	dc.RotateAbout(radians(c.Angle), c.X, c.Y)
 	dc.DrawEllipse(c.X, c.Y, c.Rx, c.Ry)
@@ -124,17 +135,26 @@ func (c *RotatedEllipse) Draw(dc *gg.Context, scale float64) {
 	dc.Pop()
 }
 
+// SVG returns the element of the shape with attrs added.
 func (c *RotatedEllipse) SVG(attrs string) string {
-	return fmt.Sprintf(
-		"<g transform=\"translate(%f %f) rotate(%f) scale(%f %f)\"><ellipse %s cx=\"0\" cy=\"0\" rx=\"1\" ry=\"1\" /></g>",
-		c.X, c.Y, c.Angle, c.Rx, c.Ry, attrs)
+	// Search moves leave Angle unbounded.
+	angle := math.Mod(c.Angle, 360)
+	if angle < 0 {
+		angle += 360
+	}
+	return buildSVGElement("ellipse", attrs, fmt.Sprintf(
+		"rx=\"%s\" ry=\"%s\" transform=\"translate(%s %s) rotate(%s)\"",
+		formatSVGCoordinate(c.Rx), formatSVGCoordinate(c.Ry),
+		formatSVGCoordinate(c.X), formatSVGCoordinate(c.Y), formatSVGCoordinate(angle)))
 }
 
+// Copy returns an independent copy.
 func (c *RotatedEllipse) Copy() Shape {
 	a := *c
 	return &a
 }
 
+// Mutate moves the center, changes the radii or turns the ellipse.
 func (c *RotatedEllipse) Mutate() {
 	w := c.Worker.W
 	h := c.Worker.H
@@ -145,12 +165,13 @@ func (c *RotatedEllipse) Mutate() {
 		c.Y = clamp(c.Y+rnd.NormFloat64()*16, 0, float64(h-1))
 	case 1:
 		c.Rx = clamp(c.Rx+rnd.NormFloat64()*16, 1, float64(w-1))
-		c.Ry = clamp(c.Ry+rnd.NormFloat64()*16, 1, float64(w-1))
+		c.Ry = clamp(c.Ry+rnd.NormFloat64()*16, 1, float64(h-1))
 	case 2:
 		c.Angle = c.Angle + rnd.NormFloat64()*32
 	}
 }
 
+// Rasterize returns the covered scanlines, cropped to the image.
 func (c *RotatedEllipse) Rasterize() []Scanline {
 	var path raster.Path
 	const n = 16

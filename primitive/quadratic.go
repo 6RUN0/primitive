@@ -1,13 +1,11 @@
 package primitive
 
 import (
-	"fmt"
-	"strings"
-
 	"github.com/fogleman/gg"
 	"github.com/golang/freetype/raster"
 )
 
+// Quadratic is a stroked quadratic Bezier curve of Width pixels.
 type Quadratic struct {
 	Worker       *Worker
 	X1, Y1       float64
@@ -17,6 +15,8 @@ type Quadratic struct {
 	MaxQuadWidth float64
 }
 
+// NewRandomQuadratic returns a curve with control points near a random point and
+// a stroke width limited by maxQuadWidth.
 func NewRandomQuadratic(worker *Worker, maxQuadWidth float64) *Quadratic {
 	rnd := worker.Rnd
 	x1 := rnd.Float64() * float64(worker.W)
@@ -31,6 +31,7 @@ func NewRandomQuadratic(worker *Worker, maxQuadWidth float64) *Quadratic {
 	return q
 }
 
+// Draw strokes the curve on dc; scale converts the width to output pixels.
 func (q *Quadratic) Draw(dc *gg.Context, scale float64) {
 	dc.MoveTo(q.X1, q.Y1)
 	dc.QuadraticTo(q.X2, q.Y2, q.X3, q.Y3)
@@ -38,19 +39,25 @@ func (q *Quadratic) Draw(dc *gg.Context, scale float64) {
 	dc.Stroke()
 }
 
+// SVG returns the element of the shape with attrs added. attrs must set the stroke:
+// Model.SVG writes what curves share on the group. Both control points of q are
+// relative to the start of the segment.
 func (q *Quadratic) SVG(attrs string) string {
-	// TODO: this is a little silly
-	attrs = strings.Replace(attrs, "fill", "stroke", -1)
-	return fmt.Sprintf(
-		"<path %s fill=\"none\" d=\"M %f %f Q %f %f, %f %f\" stroke-width=\"%f\" />",
-		attrs, q.X1, q.Y1, q.X2, q.Y2, q.X3, q.Y3, q.Width)
+	x1, y1 := roundSVGCoordinate(q.X1), roundSVGCoordinate(q.Y1)
+	data := "M" + joinSVGPathNumbers(x1, y1) + "q" + joinSVGPathNumbers(
+		roundSVGCoordinate(q.X2)-x1, roundSVGCoordinate(q.Y2)-y1,
+		roundSVGCoordinate(q.X3)-x1, roundSVGCoordinate(q.Y3)-y1)
+	return buildSVGElement("path", attrs, "d=\""+data+"\"")
 }
 
+// Copy returns an independent copy.
 func (q *Quadratic) Copy() Shape {
 	a := *q
 	return &a
 }
 
+// Mutate moves one control point or changes the width, repeating until the curve
+// is valid.
 func (q *Quadratic) Mutate() {
 	const m = 16
 	w := q.Worker.W
@@ -77,6 +84,7 @@ func (q *Quadratic) Mutate() {
 	}
 }
 
+// Valid reports whether the end points are the farthest pair of the three points.
 func (q *Quadratic) Valid() bool {
 	dx12 := int(q.X1 - q.X2)
 	dy12 := int(q.Y1 - q.Y2)
@@ -90,6 +98,7 @@ func (q *Quadratic) Valid() bool {
 	return d13 > d12 && d13 > d23
 }
 
+// Rasterize returns the covered scanlines, cropped to the image.
 func (q *Quadratic) Rasterize() []Scanline {
 	var path raster.Path
 	p1 := fixp(q.X1, q.Y1)

@@ -1,12 +1,12 @@
 package primitive
 
 import (
-	"fmt"
 	"math"
 
 	"github.com/fogleman/gg"
 )
 
+// Triangle is a triangle with integer vertices.
 type Triangle struct {
 	Worker *Worker
 	X1, Y1 int
@@ -14,6 +14,7 @@ type Triangle struct {
 	X3, Y3 int
 }
 
+// NewRandomTriangle returns a valid triangle near a random point.
 func NewRandomTriangle(worker *Worker) *Triangle {
 	rnd := worker.Rnd
 	x1 := rnd.Intn(worker.W)
@@ -27,7 +28,8 @@ func NewRandomTriangle(worker *Worker) *Triangle {
 	return t
 }
 
-func (t *Triangle) Draw(dc *gg.Context, scale float64) {
+// Draw adds the shape to the path of dc; dc applies the scale.
+func (t *Triangle) Draw(dc *gg.Context, _ float64) {
 	dc.LineTo(float64(t.X1), float64(t.Y1))
 	dc.LineTo(float64(t.X2), float64(t.Y2))
 	dc.LineTo(float64(t.X3), float64(t.Y3))
@@ -35,17 +37,20 @@ func (t *Triangle) Draw(dc *gg.Context, scale float64) {
 	dc.Fill()
 }
 
+// SVG returns the element of the shape with attrs added.
 func (t *Triangle) SVG(attrs string) string {
-	return fmt.Sprintf(
-		"<polygon %s points=\"%d,%d %d,%d %d,%d\" />",
-		attrs, t.X1, t.Y1, t.X2, t.Y2, t.X3, t.Y3)
+	xs := []float64{float64(t.X1), float64(t.X2), float64(t.X3)}
+	ys := []float64{float64(t.Y1), float64(t.Y2), float64(t.Y3)}
+	return buildSVGElement("path", attrs, "d=\""+closedSVGPath(xs, ys)+"\"")
 }
 
+// Copy returns an independent copy.
 func (t *Triangle) Copy() Shape {
 	a := *t
 	return &a
 }
 
+// Mutate moves one vertex, repeating until the triangle is valid.
 func (t *Triangle) Mutate() {
 	w := t.Worker.W
 	h := t.Worker.H
@@ -69,6 +74,7 @@ func (t *Triangle) Mutate() {
 	}
 }
 
+// Valid requires all angles above 15 degrees.
 func (t *Triangle) Valid() bool {
 	const minDegrees = 15
 	var a1, a2, a3 float64
@@ -102,6 +108,7 @@ func (t *Triangle) Valid() bool {
 	return a1 > minDegrees && a2 > minDegrees && a3 > minDegrees
 }
 
+// Rasterize returns the covered scanlines, cropped to the image.
 func (t *Triangle) Rasterize() []Scanline {
 	buf := t.Worker.Lines[:0]
 	lines := rasterizeTriangle(t.X1, t.Y1, t.X2, t.Y2, t.X3, t.Y3, buf)
@@ -125,13 +132,12 @@ func rasterizeTriangle(x1, y1, x2, y2, x3, y3 int, buf []Scanline) []Scanline {
 		return rasterizeTriangleBottom(x1, y1, x2, y2, x3, y3, buf)
 	} else if y1 == y2 {
 		return rasterizeTriangleTop(x1, y1, x2, y2, x3, y3, buf)
-	} else {
-		x4 := x1 + int((float64(y2-y1)/float64(y3-y1))*float64(x3-x1))
-		y4 := y2
-		buf = rasterizeTriangleBottom(x1, y1, x2, y2, x4, y4, buf)
-		buf = rasterizeTriangleTop(x2, y2, x4, y4, x3, y3, buf)
-		return buf
 	}
+	x4 := x1 + int((float64(y2-y1)/float64(y3-y1))*float64(x3-x1))
+	y4 := y2
+	buf = rasterizeTriangleBottom(x1, y1, x2, y2, x4, y4, buf)
+	buf = rasterizeTriangleTop(x2, y2, x4, y4, x3, y3, buf)
+	return buf
 }
 
 func rasterizeTriangleBottom(x1, y1, x2, y2, x3, y3 int, buf []Scanline) []Scanline {

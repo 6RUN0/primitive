@@ -7,12 +7,14 @@ import (
 	"github.com/fogleman/gg"
 )
 
+// Rectangle is an axis-aligned rectangle between two corners.
 type Rectangle struct {
 	Worker *Worker
 	X1, Y1 int
 	X2, Y2 int
 }
 
+// NewRandomRectangle returns a rectangle with a random corner and sides up to 32.
 func NewRandomRectangle(worker *Worker) *Rectangle {
 	rnd := worker.Rnd
 	x1 := rnd.Intn(worker.W)
@@ -34,26 +36,29 @@ func (r *Rectangle) bounds() (x1, y1, x2, y2 int) {
 	return
 }
 
-func (r *Rectangle) Draw(dc *gg.Context, scale float64) {
+// Draw adds the shape to the path of dc; dc applies the scale.
+func (r *Rectangle) Draw(dc *gg.Context, _ float64) {
 	x1, y1, x2, y2 := r.bounds()
 	dc.DrawRectangle(float64(x1), float64(y1), float64(x2-x1+1), float64(y2-y1+1))
 	dc.Fill()
 }
 
+// SVG returns the element of the shape with attrs added.
 func (r *Rectangle) SVG(attrs string) string {
 	x1, y1, x2, y2 := r.bounds()
 	w := x2 - x1 + 1
 	h := y2 - y1 + 1
-	return fmt.Sprintf(
-		"<rect %s x=\"%d\" y=\"%d\" width=\"%d\" height=\"%d\" />",
-		attrs, x1, y1, w, h)
+	return buildSVGElement("rect", attrs, fmt.Sprintf(
+		"x=\"%d\" y=\"%d\" width=\"%d\" height=\"%d\"", x1, y1, w, h))
 }
 
+// Copy returns an independent copy.
 func (r *Rectangle) Copy() Shape {
 	a := *r
 	return &a
 }
 
+// Mutate moves one corner.
 func (r *Rectangle) Mutate() {
 	w := r.Worker.W
 	h := r.Worker.H
@@ -68,6 +73,7 @@ func (r *Rectangle) Mutate() {
 	}
 }
 
+// Rasterize returns the covered scanlines, cropped to the image.
 func (r *Rectangle) Rasterize() []Scanline {
 	x1, y1, x2, y2 := r.bounds()
 	lines := r.Worker.Lines[:0]
@@ -77,6 +83,7 @@ func (r *Rectangle) Rasterize() []Scanline {
 	return lines
 }
 
+// RotatedRectangle is a rectangle rotated by Angle degrees around its center.
 type RotatedRectangle struct {
 	Worker *Worker
 	X, Y   int
@@ -84,6 +91,8 @@ type RotatedRectangle struct {
 	Angle  int
 }
 
+// NewRandomRotatedRectangle returns a valid rotated rectangle with random center,
+// sides and angle.
 func NewRandomRotatedRectangle(worker *Worker) *RotatedRectangle {
 	rnd := worker.Rnd
 	x := rnd.Intn(worker.W)
@@ -96,7 +105,8 @@ func NewRandomRotatedRectangle(worker *Worker) *RotatedRectangle {
 	return r
 }
 
-func (r *RotatedRectangle) Draw(dc *gg.Context, scale float64) {
+// Draw adds the shape to the path of dc; dc applies the scale.
+func (r *RotatedRectangle) Draw(dc *gg.Context, _ float64) {
 	sx, sy := float64(r.Sx), float64(r.Sy)
 	dc.Push()
 	dc.Translate(float64(r.X), float64(r.Y))
@@ -106,17 +116,25 @@ func (r *RotatedRectangle) Draw(dc *gg.Context, scale float64) {
 	dc.Fill()
 }
 
+// SVG returns the element of the shape with attrs added.
 func (r *RotatedRectangle) SVG(attrs string) string {
-	return fmt.Sprintf(
-		"<g transform=\"translate(%d %d) rotate(%d) scale(%d %d)\"><rect %s x=\"-0.5\" y=\"-0.5\" width=\"1\" height=\"1\" /></g>",
-		r.X, r.Y, r.Angle, r.Sx, r.Sy, attrs)
+	// A unit rect with scale repeats one string per shape: on lenna, -n 200 -r 128,
+	// 22717 bytes and 3299 after gzip -9. Literal sizes give 18423 and 4200, a path
+	// of the corners is longer after gzip too. Search moves leave Angle unbounded.
+	angle := (r.Angle%360 + 360) % 360
+	return buildSVGElement("rect", attrs, fmt.Sprintf(
+		"x=\"-.5\" y=\"-.5\" width=\"1\" height=\"1\" transform=\"translate(%d %d) rotate(%d) scale(%d %d)\"",
+		r.X, r.Y, angle, r.Sx, r.Sy))
 }
 
+// Copy returns an independent copy.
 func (r *RotatedRectangle) Copy() Shape {
 	a := *r
 	return &a
 }
 
+// Mutate moves the center, changes the sides or turns the rectangle, repeating
+// until the shape is valid.
 func (r *RotatedRectangle) Mutate() {
 	w := r.Worker.W
 	h := r.Worker.H
@@ -137,6 +155,7 @@ func (r *RotatedRectangle) Mutate() {
 	// }
 }
 
+// Valid limits the aspect ratio to 5.
 func (r *RotatedRectangle) Valid() bool {
 	a, b := r.Sx, r.Sy
 	if a < b {
@@ -146,6 +165,7 @@ func (r *RotatedRectangle) Valid() bool {
 	return aspect <= 5
 }
 
+// Rasterize returns the covered scanlines, cropped to the image.
 func (r *RotatedRectangle) Rasterize() []Scanline {
 	w := r.Worker.W
 	h := r.Worker.H
@@ -162,14 +182,13 @@ func (r *RotatedRectangle) Rasterize() []Scanline {
 	miny := minInt(y1, minInt(y2, minInt(y3, y4)))
 	maxy := maxInt(y1, maxInt(y2, maxInt(y3, y4)))
 	n := maxy - miny + 1
-	min := make([]int, n)
-	max := make([]int, n)
-	for i := range min {
-		min[i] = w
+	rowStart := make([]int, n)
+	rowEnd := make([]int, n)
+	for i := range rowStart {
+		rowStart[i] = w
 	}
 	xs := []int{x1, x2, x3, x4, x1}
 	ys := []int{y1, y2, y3, y4, y1}
-	// TODO: this could be better probably
 	for i := 0; i < 4; i++ {
 		x, y := float64(xs[i]), float64(ys[i])
 		dx, dy := float64(xs[i+1]-xs[i]), float64(ys[i+1]-ys[i])
@@ -178,8 +197,8 @@ func (r *RotatedRectangle) Rasterize() []Scanline {
 			t := float64(j) / float64(count-1)
 			xi := int(x + dx*t)
 			yi := int(y+dy*t) - miny
-			min[yi] = minInt(min[yi], xi)
-			max[yi] = maxInt(max[yi], xi)
+			rowStart[yi] = minInt(rowStart[yi], xi)
+			rowEnd[yi] = maxInt(rowEnd[yi], xi)
 		}
 	}
 	lines := r.Worker.Lines[:0]
@@ -188,8 +207,8 @@ func (r *RotatedRectangle) Rasterize() []Scanline {
 		if y < 0 || y >= h {
 			continue
 		}
-		a := maxInt(min[i], 0)
-		b := minInt(max[i], w-1)
+		a := maxInt(rowStart[i], 0)
+		b := minInt(rowEnd[i], w-1)
 		if b >= a {
 			lines = append(lines, Scanline{y, a, b, 0xffff})
 		}

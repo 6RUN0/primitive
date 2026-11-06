@@ -3,42 +3,56 @@ package primitive
 import (
 	"fmt"
 	"image/color"
+	"strconv"
 	"strings"
 )
 
+// Color is a non-premultiplied color with channels from 0 to 255.
 type Color struct {
 	R, G, B, A int
 }
 
+// MakeColor converts c to 8-bit channels; a translucent c stays premultiplied.
 func MakeColor(c color.Color) Color {
 	r, g, b, a := c.RGBA()
 	return Color{int(r / 257), int(g / 257), int(b / 257), int(a / 257)}
 }
 
-func MakeHexColor(x string) Color {
-	x = strings.Trim(x, "#")
-	var r, g, b, a int
-	a = 255
-	switch len(x) {
-	case 3:
-		fmt.Sscanf(x, "%1x%1x%1x", &r, &g, &b)
-		r = (r << 4) | r
-		g = (g << 4) | g
-		b = (b << 4) | b
-	case 4:
-		fmt.Sscanf(x, "%1x%1x%1x%1x", &r, &g, &b, &a)
-		r = (r << 4) | r
-		g = (g << 4) | g
-		b = (b << 4) | b
-		a = (a << 4) | a
-	case 6:
-		fmt.Sscanf(x, "%02x%02x%02x", &r, &g, &b)
-	case 8:
-		fmt.Sscanf(x, "%02x%02x%02x%02x", &r, &g, &b, &a)
+// MakeHexColor parses "rgb", "rgba", "rrggbb" or "rrggbbaa" hex digits with an
+// optional leading "#". Alpha defaults to 255. Any other value is an error.
+func MakeHexColor(x string) (Color, error) {
+	digits := strings.TrimPrefix(x, "#")
+	// strconv accepts neither a sign nor a 0x prefix for an explicit base 16.
+	value, err := strconv.ParseUint(digits, 16, 32)
+	if err != nil {
+		return Color{}, fmt.Errorf("invalid hex color %q", x)
 	}
-	return Color{r, g, b, a}
+	switch len(digits) {
+	case 3:
+		value = value<<4 | 0xf
+		fallthrough
+	case 4:
+		return Color{
+			int(value>>12&0xf) * 0x11,
+			int(value>>8&0xf) * 0x11,
+			int(value>>4&0xf) * 0x11,
+			int(value&0xf) * 0x11,
+		}, nil
+	case 6:
+		value = value<<8 | 0xff
+		fallthrough
+	case 8:
+		return Color{
+			int(value >> 24 & 0xff),
+			int(value >> 16 & 0xff),
+			int(value >> 8 & 0xff),
+			int(value & 0xff),
+		}, nil
+	}
+	return Color{}, fmt.Errorf("invalid hex color %q", x)
 }
 
+// NRGBA returns c as a standard library color.
 func (c *Color) NRGBA() color.NRGBA {
 	return color.NRGBA{uint8(c.R), uint8(c.G), uint8(c.B), uint8(c.A)}
 }

@@ -1,13 +1,11 @@
 package primitive
 
 import (
-	"fmt"
-	"strings"
-
 	"github.com/fogleman/gg"
 	"github.com/golang/freetype/raster"
 )
 
+// Polygon is a closed shape of Order vertices, optionally kept convex.
 type Polygon struct {
 	Worker *Worker
 	Order  int
@@ -15,6 +13,8 @@ type Polygon struct {
 	X, Y   []float64
 }
 
+// NewRandomPolygon returns a polygon of order vertices near a random point. convex
+// restricts the search to convex shapes.
 func NewRandomPolygon(worker *Worker, order int, convex bool) *Polygon {
 	rnd := worker.Rnd
 	x := make([]float64, order)
@@ -30,7 +30,8 @@ func NewRandomPolygon(worker *Worker, order int, convex bool) *Polygon {
 	return p
 }
 
-func (p *Polygon) Draw(dc *gg.Context, scale float64) {
+// Draw adds the shape to the path of dc; dc applies the scale.
+func (p *Polygon) Draw(dc *gg.Context, _ float64) {
 	dc.NewSubPath()
 	for i := 0; i < p.Order; i++ {
 		dc.LineTo(p.X[i], p.Y[i])
@@ -39,18 +40,12 @@ func (p *Polygon) Draw(dc *gg.Context, scale float64) {
 	dc.Fill()
 }
 
+// SVG returns the element of the shape with attrs added.
 func (p *Polygon) SVG(attrs string) string {
-	ret := fmt.Sprintf(
-		"<polygon %s points=\"",
-		attrs)
-	points := make([]string, len(p.X))
-	for i := 0; i < len(p.X); i++ {
-		points[i] = fmt.Sprintf("%f,%f", p.X[i], p.Y[i])
-	}
-
-	return ret + strings.Join(points, ",") + "\" />"
+	return buildSVGElement("path", attrs, "d=\""+closedSVGPath(p.X, p.Y)+"\"")
 }
 
+// Copy returns an independent copy, vertices included.
 func (p *Polygon) Copy() Shape {
 	a := *p
 	a.X = make([]float64, p.Order)
@@ -60,6 +55,7 @@ func (p *Polygon) Copy() Shape {
 	return &a
 }
 
+// Mutate moves one vertex or swaps two, repeating until the shape is valid.
 func (p *Polygon) Mutate() {
 	const m = 16
 	w := p.Worker.W
@@ -81,6 +77,8 @@ func (p *Polygon) Mutate() {
 	}
 }
 
+// Valid reports whether all turns have one direction; a non-convex polygon is
+// always valid.
 func (p *Polygon) Valid() bool {
 	if !p.Convex {
 		return true
@@ -108,6 +106,7 @@ func cross3(x1, y1, x2, y2, x3, y3 float64) float64 {
 	return dx1*dy2 - dy1*dx2
 }
 
+// Rasterize returns the covered scanlines, cropped to the image.
 func (p *Polygon) Rasterize() []Scanline {
 	var path raster.Path
 	for i := 0; i <= p.Order; i++ {

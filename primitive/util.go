@@ -1,117 +1,89 @@
 package primitive
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"image"
 	"image/color"
-	"image/color/palette"
 	"image/draw"
-	"image/gif"
 	"image/jpeg"
 	"image/png"
+	"io"
 	"math"
 	"os"
-	"os/exec"
-	"path/filepath"
 )
 
+// LoadImage decodes the image at path, "-" reads standard input.
 func LoadImage(path string) (image.Image, error) {
 	if path == "-" {
 		im, _, err := image.Decode(os.Stdin)
 		return im, err
-	} else {
-		file, err := os.Open(path)
-		if err != nil {
-			return nil, err
-		}
-		defer file.Close()
-		im, _, err := image.Decode(file)
-		return im, err
 	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	// A read error surfaces through Decode, Close has nothing to add.
+	defer func() { _ = file.Close() }()
+	im, _, err := image.Decode(file)
+	return im, err
 }
 
+// saveToFile encodes to memory and then replaces path, so that a failed encoder
+// leaves an existing file as it was. A failed write can still leave part of the
+// file. The error of Close counts: a full disk or a network mount can report a
+// failed write only there.
+func saveToFile(path string, encode func(io.Writer) error) (err error) {
+	var encoded bytes.Buffer
+	if err := encode(&encoded); err != nil {
+		return err
+	}
+	file, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer func() { err = errors.Join(err, file.Close()) }()
+	_, err = file.Write(encoded.Bytes())
+	return err
+}
+
+// SaveFile writes contents to path, "-" writes to standard output.
 func SaveFile(path, contents string) error {
 	if path == "-" {
 		_, err := fmt.Fprint(os.Stdout, contents)
 		return err
-	} else {
-		file, err := os.Create(path)
-		if err != nil {
-			return err
-		}
-		defer file.Close()
-		_, err = file.WriteString(contents)
-		return err
 	}
+	return saveToFile(path, func(w io.Writer) error {
+		_, err := io.WriteString(w, contents)
+		return err
+	})
 }
 
+// SavePNG writes im to path as a PNG file.
 func SavePNG(path string, im image.Image) error {
-	file, err := os.Create(path)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-	return png.Encode(file, im)
+	return saveToFile(path, func(w io.Writer) error {
+		return png.Encode(w, im)
+	})
 }
 
+// SaveJPG writes im to path as a JPEG file of the given quality, from 1 to 100.
 func SaveJPG(path string, im image.Image, quality int) error {
-	file, err := os.Create(path)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-	return jpeg.Encode(file, im, &jpeg.Options{quality})
+	return saveToFile(path, func(w io.Writer) error {
+		return jpeg.Encode(w, im, &jpeg.Options{Quality: quality})
+	})
 }
 
+// SaveGIF writes frames as a looping animation with a palette taken from the last
+// frame. Frames must have one size. delay and lastDelay are in hundredths of a
+// second from 0 to 65535, the last frame gets lastDelay.
 func SaveGIF(path string, frames []image.Image, delay, lastDelay int) error {
-	g := gif.GIF{}
-	for i, src := range frames {
-		dst := image.NewPaletted(src.Bounds(), palette.Plan9)
-		draw.Draw(dst, dst.Rect, src, image.ZP, draw.Src)
-		g.Image = append(g.Image, dst)
-		if i == len(frames)-1 {
-			g.Delay = append(g.Delay, lastDelay)
-		} else {
-			g.Delay = append(g.Delay, delay)
-		}
-	}
-	file, err := os.Create(path)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-	return gif.EncodeAll(file, &g)
+	return saveToFile(path, func(w io.Writer) error {
+		return encodeGIF(w, frames, delay, lastDelay)
+	})
 }
 
-func SaveGIFImageMagick(path string, frames []image.Image, delay, lastDelay int) error {
-	dir, err := os.MkdirTemp("", "")
-	if err != nil {
-		return err
-	}
-	for i, im := range frames {
-		path := filepath.Join(dir, fmt.Sprintf("%06d.png", i))
-		SavePNG(path, im)
-	}
-	args := []string{
-		"-loop", "0",
-		"-delay", fmt.Sprint(delay),
-		filepath.Join(dir, "*.png"),
-		"-delay", fmt.Sprint(lastDelay - delay),
-		filepath.Join(dir, fmt.Sprintf("%06d.png", len(frames)-1)),
-		path,
-	}
-	var cmd *exec.Cmd
-	if _, err := exec.LookPath("magick"); err == nil {
-		cmd = exec.Command("magick", append([]string{"convert"}, args...)...)
-	} else {
-		cmd = exec.Command("convert", args...)
-	}
-	if err := cmd.Run(); err != nil {
-		return err
-	}
-	return os.RemoveAll(dir)
-}
-
+// NumberString formats x with one decimal and a k, M, G or T suffix.
 func NumberString(x float64) string {
 	suffixes := []string{"", "k", "M", "G"}
 	for _, suffix := range suffixes {
@@ -171,9 +143,12 @@ func rotate(x, y, theta float64) (rx, ry float64) {
 	return
 }
 
+// imageToRGBA copies src to an image with its origin at zero: the pixel kernels
+// use zero-based coordinates and a shared Pix layout.
 func imageToRGBA(src image.Image) *image.RGBA {
-	dst := image.NewRGBA(src.Bounds())
-	draw.Draw(dst, dst.Rect, src, image.ZP, draw.Src)
+	bounds := src.Bounds()
+	dst := image.NewRGBA(image.Rect(0, 0, bounds.Dx(), bounds.Dy()))
+	draw.Draw(dst, dst.Rect, src, bounds.Min, draw.Src)
 	return dst
 }
 
@@ -185,14 +160,19 @@ func copyRGBA(src *image.RGBA) *image.RGBA {
 
 func uniformRGBA(r image.Rectangle, c color.Color) *image.RGBA {
 	im := image.NewRGBA(r)
-	draw.Draw(im, im.Bounds(), &image.Uniform{c}, image.ZP, draw.Src)
+	draw.Draw(im, im.Bounds(), &image.Uniform{c}, image.Point{}, draw.Src)
 	return im
 }
 
+// AverageImageColor returns the opaque mean color of im, black for an image
+// without pixels.
 func AverageImageColor(im image.Image) color.NRGBA {
 	rgba := imageToRGBA(im)
 	size := rgba.Bounds().Size()
 	w, h := size.X, size.Y
+	if w*h == 0 {
+		return color.NRGBA{A: 255}
+	}
 	var r, g, b int
 	for y := 0; y < h; y++ {
 		for x := 0; x < w; x++ {

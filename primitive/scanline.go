@@ -1,5 +1,7 @@
 package primitive
 
+// Scanline is a run of pixels X1 to X2 inclusive on row Y with coverage Alpha, from
+// 0 to 0xffff.
 type Scanline struct {
 	Y, X1, X2 int
 	Alpha     uint32

@@ -17,7 +17,7 @@ type painter struct {
 	Lines []Scanline
 }
 
-func (p *painter) Paint(spans []raster.Span, done bool) {
+func (p *painter) Paint(spans []raster.Span, _ bool) {
 	for _, span := range spans {
 		p.Lines = append(p.Lines, Scanline{span.Y, span.X0, span.X1 - 1, span.Alpha})
 	}
