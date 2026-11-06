@@ -9,6 +9,8 @@ state of `master` before the first release of this fork. Entries marked
 
 ## [Unreleased]
 
+## [0.1.0-rc1] - 2026-11-06
+
 ### Added
 
 - `-seed`: a run is repeatable. Equal input, flags, `-seed` and `-j` give the
@@ -132,4 +134,5 @@ state of `master` before the first release of this fork. Entries marked
 - Release archives carry build provenance attestations, checked with
   `gh attestation verify`. The image has none.
 
-[Unreleased]: https://github.com/6RUN0/primitive/commits/master
+[Unreleased]: https://github.com/6RUN0/primitive/compare/v0.1.0-rc1...master
+[0.1.0-rc1]: https://github.com/6RUN0/primitive/releases/tag/v0.1.0-rc1

@@ -9,6 +9,8 @@ English: [CHANGELOG.md](CHANGELOG.md).
 
 ## [Unreleased]
 
+## [0.1.0-rc1] - 2026-11-06
+
 ### Added
 
 - `-seed`: запуск повторяем. Одинаковые вход, флаги, `-seed` и `-j` дают те же
@@ -127,4 +129,5 @@ English: [CHANGELOG.md](CHANGELOG.md).
 - Архивы выпусков несут attestation происхождения сборки, проверка -
   `gh attestation verify`. У образа её нет.
 
-[Unreleased]: https://github.com/6RUN0/primitive/commits/master
+[Unreleased]: https://github.com/6RUN0/primitive/compare/v0.1.0-rc1...master
+[0.1.0-rc1]: https://github.com/6RUN0/primitive/releases/tag/v0.1.0-rc1
