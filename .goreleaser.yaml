@@ -1,0 +1,104 @@
+---
+version: 2
+
+project_name: primitive
+
+builds:
+  - id: primitive
+    main: .
+    binary: primitive
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+      - freebsd
+    goarch:
+      - amd64
+      - arm64
+    goamd64:
+      - v1
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE.md
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+dockers_v2:
+  - ids:
+      - primitive
+    dockerfile: Dockerfile
+    sbom: "false"
+    images:
+      - ghcr.io/6run0/primitive
+    tags:
+      - "{{ .Version }}"
+      - "{{ if not .Prerelease }}latest{{ end }}"
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    labels:
+      org.opencontainers.image.source: "{{ .GitURL }}"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.licenses: MIT
+
+git:
+  prerelease_suffix: "-"
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-dev{{ .CommitTimestamp }}"
+
+changelog:
+  use: git
+  sort: asc
+  filters:
+    exclude:
+      - '^build\(deps\)'
+      - '^ci\(deps\)'
+      - '^Bump '
+  groups:
+    - title: Features
+      regexp: '^feat(\(.+\))?!?:'
+      order: 0
+    - title: Fixes
+      regexp: '^fix(\(.+\))?!?:'
+      order: 1
+    - title: Performance
+      regexp: '^perf(\(.+\))?!?:'
+      order: 2
+    - title: Documentation
+      regexp: '^docs(\(.+\))?!?:'
+      order: 3
+    - title: Refactoring
+      regexp: '^refactor(\(.+\))?!?:'
+      order: 4
+    - title: Build
+      regexp: '^build(\(.+\))?!?:'
+      order: 5
+    - title: CI
+      regexp: '^ci(\(.+\))?!?:'
+      order: 6
+    - title: Other
+      order: 999
+
+release:
+  draft: false
+  prerelease: auto
