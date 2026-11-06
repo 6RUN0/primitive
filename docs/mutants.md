@@ -22,6 +22,17 @@ passes none.
 Too low a `timeout-coefficient` in `.gremlins.yaml` shows as `TIMED OUT`, which
 counts as killed and hides survivors; see "Timeouts".
 
+## Memory
+
+A mutant can turn a loop that appends scanlines into an endless one. With `y--`
+in the loop of `Rectangle.Rasterize`, `go test ./primitive` reached a 2 GiB limit
+in 0.64 s, so four workers can exhaust a machine well before
+`timeout-coefficient` stops them. `make mutants` therefore runs under
+`ulimit -v $(MUTANTS_MEMORY_KB)`, 3 GiB per process by default: such a mutant
+dies with `fatal error: out of memory`, which gremlins counts as killed. The
+tests pass under this limit. Keep `MUTANTS_WORKERS x MUTANTS_MEMORY_KB` below free
+memory: GitHub-hosted runners have 16 GiB; on a shared machine lower both.
+
 ## Timeouts
 
 gremlins limits each mutant to `timeout-coefficient` times the baseline test run,

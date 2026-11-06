@@ -3,6 +3,8 @@ UVX ?= uvx
 FUZZTIME ?= 10s
 FUZZPARALLEL ?= 4
 MUTANTS_WORKERS ?= 4
+# limit = MUTANTS_WORKERS x MUTANTS_MEMORY_KB, keep it below free memory
+MUTANTS_MEMORY_KB ?= 3145728
 
 TOOL := $(GO) tool -modfile=tools/go.mod
 ACTIONLINT := $(GO) tool -modfile=tools/actionlint/go.mod actionlint
@@ -60,7 +62,7 @@ mutants:
 	@case "$${BASE-origin/master}" in -*|*[!0-9A-Za-z./_~^-]*) echo "invalid BASE: $$BASE" >&2; exit 1;; esac
 	rm -rf $(MUTANTS_WORK) && mkdir -p $(MUTANTS_WORK)/src
 	git ls-files -z -co --exclude-standard | tar --null -T - -cf - | tar -C $(MUTANTS_WORK)/src -xf -
-	base=$${BASE-origin/master}; cd $(MUTANTS_WORK)/src && GIT_DIR=$(CURDIR)/.git GIT_WORK_TREE=$(MUTANTS_WORK)/src GIT_OPTIONAL_LOCKS=0 \
+	ulimit -v $(MUTANTS_MEMORY_KB); base=$${BASE-origin/master}; cd $(MUTANTS_WORK)/src && GIT_DIR=$(CURDIR)/.git GIT_WORK_TREE=$(MUTANTS_WORK)/src GIT_OPTIONAL_LOCKS=0 \
 		$(GREMLINS) unleash --config .gremlins.yaml --workers $(MUTANTS_WORKERS) \
 		$${base:+--diff "$$base"} -o $(MUTANTS_WORK)/report.json
 
