@@ -1,7 +1,9 @@
 package primitive
 
 import (
+	"fmt"
 	"math"
+	"math/rand"
 	"testing"
 )
 
@@ -229,5 +231,90 @@ func TestStepKeepsModelConsistent(t *testing.T) {
 	}
 	if got := frames[0].Bounds().Size(); got.X != 64 || got.Y != 64 {
 		t.Errorf("frame size %v, want 64x64", got)
+	}
+}
+
+// TestQuadraticValidMatchesFarthestPair pins Valid against its definition on a
+// grid small enough to hold many equal distances: the end points must be the
+// farthest pair, and a tie is not valid.
+func TestQuadraticValidMatchesFarthestPair(t *testing.T) {
+	rnd := rand.New(rand.NewSource(1))
+	squared := func(ax, ay, bx, by float64) float64 { return (ax-bx)*(ax-bx) + (ay-by)*(ay-by) }
+	for i := 0; i < 3000; i++ {
+		var p [6]float64
+		for j := range p {
+			p[j] = float64(rnd.Intn(13) - 6)
+		}
+		d12, d23, d13 := squared(p[0], p[1], p[2], p[3]), squared(p[2], p[3], p[4], p[5]), squared(p[0], p[1], p[4], p[5])
+		want := d13 > d12 && d13 > d23
+		curve := &Quadratic{X1: p[0], Y1: p[1], X2: p[2], Y2: p[3], X3: p[4], Y3: p[5]}
+		if got := curve.Valid(); got != want {
+			t.Fatalf("points %v: got %v, want %v", p, got, want)
+		}
+	}
+}
+
+// TestPolygonValidCountsStraightVertexAsNegativeTurn pins the rule for a vertex
+// on the line of its neighbours, which clamping to the margin produces: a zero
+// cross product is a turn to the negative side, in the first triple and in the
+// later ones. A convex shape with such a vertex passes in one direction of the walk
+// only.
+func TestPolygonValidCountsStraightVertexAsNegativeTurn(t *testing.T) {
+	cases := []struct {
+		name string
+		x, y []float64
+		want bool
+	}{
+		{"straight first, turns positive", []float64{0, 5, 10, 10, 0}, []float64{0, 0, 0, 10, 10}, false},
+		{"straight first, turns negative", []float64{0, 5, 10, 10, 0}, []float64{0, 0, 0, -10, -10}, true},
+		{"straight last, turns positive", []float64{5, 10, 10, 0, 0}, []float64{0, 0, 10, 10, 0}, false},
+		{"straight last, turns negative", []float64{5, 10, 10, 0, 0}, []float64{0, 0, -10, -10, 0}, true},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			polygon := &Polygon{Order: len(testCase.x), Convex: true, X: testCase.x, Y: testCase.y}
+			if got := polygon.Valid(); got != testCase.want {
+				t.Errorf("got %v, want %v", got, testCase.want)
+			}
+		})
+	}
+}
+
+// TestBestRandomStateKeepsFirstOfEqualEnergies pins the tie rule of the searches:
+// when current already equals the target every candidate scores zero, and the
+// first one wins, which keeps a run reproducible when scores tie.
+func TestBestRandomStateKeepsFirstOfEqualEnergies(t *testing.T) {
+	newWorker := func() *Worker {
+		target := newUniformRGBA(32, 32, Color{90, 120, 150, 255})
+		worker := NewWorker(target, 11)
+		worker.Init(copyRGBA(target), 0)
+		return worker
+	}
+	for _, shapeType := range allShapeTypes {
+		first := newWorker().RandomState(shapeType, 128, 0.5).Shape.SVG("")
+		if got := newWorker().BestRandomState(shapeType, 128, 6, 0.5).Shape.SVG(""); got != first {
+			t.Errorf("mode %d: best of six is not the first candidate:\n%s\nwant:\n%s", shapeType, got, first)
+		}
+		if got := newWorker().BestHillClimbState(shapeType, 128, 1, 2, 3, 0.5).Shape.SVG(""); got != newWorker().BestHillClimbState(shapeType, 128, 1, 2, 1, 0.5).Shape.SVG("") {
+			t.Errorf("mode %d: best of three climbs is not the first climb", shapeType)
+		}
+	}
+}
+
+// TestCombinedModeReachesEveryShape pins ShapeTypeAny: all eight shapes are
+// drawn, the polygon and the rotated ellipse included.
+func TestCombinedModeReachesEveryShape(t *testing.T) {
+	worker := newTestWorker(32, 32, 3)
+	seen := map[string]bool{}
+	for i := 0; i < 400; i++ {
+		switch shape := worker.RandomState(ShapeTypeAny, 128, 0.5).Shape.(type) {
+		case *Ellipse:
+			seen[fmt.Sprintf("ellipse circle=%v", shape.Circle)] = true
+		default:
+			seen[fmt.Sprintf("%T", shape)] = true
+		}
+	}
+	if len(seen) != 8 {
+		t.Errorf("got %d kinds of shape, want 8: %v", len(seen), seen)
 	}
 }

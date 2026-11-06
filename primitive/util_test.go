@@ -1,6 +1,7 @@
 package primitive
 
 import (
+	"image"
 	"image/color"
 	"os"
 	"path/filepath"
@@ -70,5 +71,20 @@ func TestSaveFileWritesContents(t *testing.T) {
 	}
 	if got, err := os.ReadFile(path); err != nil || string(got) != "<svg/>" {
 		t.Errorf("got %q, error %v", got, err)
+	}
+}
+
+// TestAverageImageColorNarrowImage pins the empty-image test of
+// AverageImageColor: an image one pixel wide or high has pixels and a mean.
+func TestAverageImageColorNarrowImage(t *testing.T) {
+	for _, size := range []image.Point{{1, 3}, {3, 1}} {
+		picture := image.NewNRGBA(image.Rect(0, 0, size.X, size.Y))
+		colors := []color.NRGBA{{0, 0, 0, 255}, {90, 60, 30, 255}, {30, 60, 90, 255}}
+		for i := 0; i < 3; i++ {
+			picture.SetNRGBA(i%size.X, i/size.X, colors[i])
+		}
+		if got, want := AverageImageColor(picture), (color.NRGBA{40, 40, 40, 255}); got != want {
+			t.Errorf("%v image: got %v, want %v", size, got, want)
+		}
 	}
 }

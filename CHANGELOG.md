@@ -101,6 +101,9 @@ state of `master` before the first release of this fork. Entries marked
   `%d` path.
 - `-m 7` limited the vertical radius by the width of the image instead of its
   height.
+- `-m 5` and `-m 0`: the search scored a rotated rectangle crossing the left edge
+  with a stray pixel at `x = 0` in each row more than a pixel left of the image.
+  The picture never showed that pixel, but the search chose other shapes.
 - The average background color of an input with an offset was wrong,
   `{8 4 2 255}` instead of `{200 100 50 255}`, with no error.
 - `MakeHexColor` turned malformed values such as `0X00` into a color with alpha

@@ -91,8 +91,8 @@ type RotatedRectangle struct {
 	Angle  int
 }
 
-// NewRandomRotatedRectangle returns a valid rotated rectangle with random center,
-// sides and angle.
+// NewRandomRotatedRectangle returns a rotated rectangle with random center, sides
+// and angle. Its aspect ratio is not limited, see Mutate.
 func NewRandomRotatedRectangle(worker *Worker) *RotatedRectangle {
 	rnd := worker.Rnd
 	x := rnd.Intn(worker.W)
@@ -133,8 +133,8 @@ func (r *RotatedRectangle) Copy() Shape {
 	return &a
 }
 
-// Mutate moves the center, changes the sides or turns the rectangle, repeating
-// until the shape is valid.
+// Mutate moves the center, changes the sides or turns the rectangle. The search
+// does not apply the aspect limit of Valid.
 func (r *RotatedRectangle) Mutate() {
 	w := r.Worker.W
 	h := r.Worker.H
@@ -155,7 +155,7 @@ func (r *RotatedRectangle) Mutate() {
 	// }
 }
 
-// Valid limits the aspect ratio to 5.
+// Valid limits the aspect ratio to 5. The search does not call it.
 func (r *RotatedRectangle) Valid() bool {
 	a, b := r.Sx, r.Sy
 	if a < b {
@@ -186,6 +186,7 @@ func (r *RotatedRectangle) Rasterize() []Scanline {
 	rowEnd := make([]int, n)
 	for i := range rowStart {
 		rowStart[i] = w
+		rowEnd[i] = -1
 	}
 	xs := []int{x1, x2, x3, x4, x1}
 	ys := []int{y1, y2, y3, y4, y1}

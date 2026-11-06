@@ -2,13 +2,16 @@ package main
 
 import (
 	"bytes"
+	"encoding/hex"
 	"image"
 	"image/color"
 	"image/gif"
 	"image/png"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -327,10 +330,10 @@ func TestCLINthFrame(t *testing.T) {
 	}
 }
 
-// TestCLIStopsOnExactMatch pins -ma and -mp on flat graphics, where opaque rectangles
-// reach an exact match: a score that wraps uint64 at that point jumps to millions,
-// so neither limit fires and the run goes on spoiling the picture.
-func TestCLIStopsOnExactMatch(t *testing.T) {
+// writeFlatPNG writes a 4x3 picture of two flat colors, which opaque rectangles
+// match exactly.
+func writeFlatPNG(t *testing.T) string {
+	t.Helper()
 	picture := image.NewNRGBA(image.Rect(0, 0, 4, 3))
 	for y := 0; y < 3; y++ {
 		for x := 0; x < 4; x++ {
@@ -341,9 +344,8 @@ func TestCLIStopsOnExactMatch(t *testing.T) {
 			picture.SetNRGBA(x, y, fill)
 		}
 	}
-	input := filepath.Join(t.TempDir(), "flat.png")
-	output := filepath.Join(t.TempDir(), "output.svg")
-	file, err := os.Create(input)
+	path := filepath.Join(t.TempDir(), "flat.png")
+	file, err := os.Create(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -351,6 +353,15 @@ func TestCLIStopsOnExactMatch(t *testing.T) {
 	if err := png.Encode(file, picture); err != nil {
 		t.Fatal(err)
 	}
+	return path
+}
+
+// TestCLIStopsOnExactMatch pins -ma and -mp on flat graphics, where opaque rectangles
+// reach an exact match: a score that wraps uint64 at that point jumps to millions,
+// so neither limit fires and the run goes on spoiling the picture.
+func TestCLIStopsOnExactMatch(t *testing.T) {
+	input := writeFlatPNG(t)
+	output := filepath.Join(t.TempDir(), "output.svg")
 	for _, limit := range [][]string{{"-ma", "0.000001"}, {"-mp", "99.999"}} {
 		for seed := 1; seed <= 3; seed++ {
 			arguments := []string{"-i", input, "-o", output, "-bg", "654321", "-m", "2", "-a", "255", "-n", "40", "-j", "1", "-s", "8", "-seed", strconv.Itoa(seed), "-v"}
@@ -492,5 +503,111 @@ func TestVersionComesFromLinker(t *testing.T) {
 	}
 	if string(printed) != "1.2.3\n" {
 		t.Errorf("got %q", printed)
+	}
+}
+
+// TestCLIStopsAtScoreEqualToLimit pins the inclusive limits at an exact match,
+// where the score is 0 and the percentage is 100, equal to the default limits:
+// each limit alone, with the other one out of reach, ends the run and writes the
+// output.
+func TestCLIStopsAtScoreEqualToLimit(t *testing.T) {
+	input := writeFlatPNG(t)
+	for _, limit := range [][]string{{"-mp", "101"}, {"-ma", "-1"}} {
+		for seed := 1; seed <= 3; seed++ {
+			output := filepath.Join(t.TempDir(), "output.svg")
+			arguments := []string{"-i", input, "-o", output, "-bg", "654321", "-m", "2", "-a", "255", "-n", "40", "-j", "1", "-s", "8", "-seed", strconv.Itoa(seed), "-v"}
+			result := runCLI(t, append(arguments, limit...)...)
+			if result.exitCode != 0 {
+				t.Fatalf("exit code %d: %s", result.exitCode, result.stderr)
+			}
+			if strings.Contains(result.stdout, "\n40: ") {
+				t.Errorf("%v, seed %d: the run did not stop", limit, seed)
+			}
+			if info, err := os.Stat(output); err != nil || info.Size() == 0 {
+				t.Errorf("%v, seed %d: no output after the stop: %v", limit, seed, err)
+			}
+		}
+	}
+}
+
+var verboseStepLine = regexp.MustCompile(`(?m)^(\d+): t=([0-9.]+), score=([0-9.]+), n=(\d+), n/s=([0-9.]+)([kMGT]?), percent score=(-?[0-9.]+)%$`)
+
+// TestCLIReportsRatesInVerboseLog pins the numbers of a verbose line: the
+// evaluations per second must be at least the evaluations over the elapsed time,
+// and the percentage must be the drop from the start score.
+func TestCLIReportsRatesInVerboseLog(t *testing.T) {
+	input := writeTestPNG(t, 24, 24)
+	result := runCLI(t, "-i", input, "-o", "-", "-n", "3", "-r", "24", "-s", "48", "-j", "1", "-seed", "5", "-v")
+	if result.exitCode != 0 {
+		t.Fatalf("exit code %d: %s", result.exitCode, result.stderr)
+	}
+	start := regexp.MustCompile(`(?m)^0: t=0.000, score=([0-9.]+)$`).FindStringSubmatch(result.stdout)
+	steps := verboseStepLine.FindAllStringSubmatch(result.stdout, -1)
+	if start == nil || len(steps) != 3 {
+		t.Fatalf("got start %v and %d step lines in:\n%s", start, len(steps), result.stdout)
+	}
+	startScore, _ := strconv.ParseFloat(start[1], 64)
+	multipliers := map[string]float64{"": 1, "k": 1e3, "M": 1e6, "G": 1e9, "T": 1e12}
+	for _, step := range steps {
+		elapsed, _ := strconv.ParseFloat(step[2], 64)
+		score, _ := strconv.ParseFloat(step[3], 64)
+		evaluations, _ := strconv.ParseFloat(step[4], 64)
+		rate, _ := strconv.ParseFloat(step[5], 64)
+		percent, _ := strconv.ParseFloat(step[7], 64)
+		if rate*multipliers[step[6]]*elapsed < evaluations/2 {
+			t.Errorf("step %s: %s%s evaluations per second over %v s cannot make %v evaluations", step[1], step[5], step[6], elapsed, evaluations)
+		}
+		if want := 100 - score/startScore*100; math.Abs(percent-want) > 0.002 {
+			t.Errorf("step %s: percent score %v, want %v from score %v over start %v", step[1], percent, want, score, startScore)
+		}
+	}
+}
+
+// TestCLIResizesInputOnlyBelowLimit pins -r: a positive value shrinks a larger
+// input, which the viewBox of the SVG shows, and 0 leaves the input alone.
+func TestCLIResizesInputOnlyBelowLimit(t *testing.T) {
+	input := writeTestPNG(t, 40, 40)
+	for _, testCase := range []struct{ limit, viewBox string }{{"16", "0 0 16 16"}, {"0", "0 0 40 40"}, {"256", "0 0 40 40"}} {
+		result := runCLI(t, "-i", input, "-o", "-", "-n", "1", "-r", testCase.limit, "-j", "1", "-seed", "1")
+		if result.exitCode != 0 {
+			t.Fatalf("-r %s: exit code %d: %s", testCase.limit, result.exitCode, result.stderr)
+		}
+		if !strings.Contains(result.stdout, `viewBox="`+testCase.viewBox+`"`) {
+			t.Errorf("-r %s: want viewBox %s in %.80s", testCase.limit, testCase.viewBox, result.stdout)
+		}
+	}
+}
+
+// TestCLIBackgroundOption pins -bg: a given color is the background, and
+// without it the background is the average color of the input.
+func TestCLIBackgroundOption(t *testing.T) {
+	input := writeTestPNG(t, 24, 24)
+	file, err := os.Open(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = file.Close() }()
+	picture, err := png.Decode(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	average := primitive.AverageImageColor(picture)
+	cases := []struct {
+		name      string
+		arguments []string
+		want      string
+	}{
+		{"given", []string{"-bg", "654321"}, `fill="#654321"`},
+		{"average", nil, `fill="#` + hex.EncodeToString([]byte{average.R, average.G, average.B}) + `"`},
+	}
+	for _, testCase := range cases {
+		arguments := append([]string{"-i", input, "-o", "-", "-n", "1", "-r", "24", "-j", "1", "-seed", "1"}, testCase.arguments...)
+		result := runCLI(t, arguments...)
+		if result.exitCode != 0 {
+			t.Fatalf("%s: exit code %d: %s", testCase.name, result.exitCode, result.stderr)
+		}
+		if !strings.Contains(result.stdout, `<rect width="100%" height="100%" `+testCase.want) {
+			t.Errorf("%s: want a background with %s in %.120s", testCase.name, testCase.want, result.stdout)
+		}
 	}
 }
