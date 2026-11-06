@@ -1,1 +1,0 @@
-prim.sh examples/pyramids.png 500 1024 2048 97 3
