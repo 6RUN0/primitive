@@ -56,3 +56,10 @@ original goes to the table below, one row per mutant:
 
 | File | Expression | Mutation | Why equivalent |
 | --- | --- | --- | --- |
+| `main.go` | `width >= height` in `makeThumbnail` | CONDITIONALS_BOUNDARY | At equal sides both branches compute `maxSize` for width and `max(1, side*maxSize/side)`, which is `maxSize`, for height. |
+| `primitive/gif.go` | `y < box.Max.Y` in `changedRegion` | CONDITIONALS_BOUNDARY | The extra row lies outside `region.Rect`, and `Paletted.SetColorIndex` ignores a point outside its rectangle; the reads of `ColorIndexAt` have no side effects. |
+| `primitive/gif.go` | `x < box.Max.X` in `changedRegion` | CONDITIONALS_BOUNDARY | Same as the row: the extra column is outside `region.Rect` and is ignored by `SetColorIndex`. |
+| `primitive/svg.go` | `2*len(xs)` in `closedSVGPath` | ARITHMETIC_BASE | The expression is the capacity hint of `make`; `append` grows the slice and the path text does not depend on the capacity. |
+| `primitive/svg.go` | `c.A < common` in `findCommonAlpha` | CONDITIONALS_BOUNDARY | The comparison is reached with `count == commonCount`; at `c.A == common` the assignment stores the values the variables already hold. |
+| `primitive/tables.go` | `1<<32 - 1` in `maxTableWidth` | ARITHMETIC_BASE, INVERT_NEGATIVES | `(2^32 + 1) / 65025` and `(2^32 - 1) / 65025` both round down to 66051: 66051 x 65025 = 4294966275 and 66052 x 65025 = 4295031300 lie on both sides of either numerator. |
+| `primitive/tables.go` | `size.X*size.Y > maxTablePixels` in `newPixelTables` | CONDITIONALS_BOUNDARY | Not equivalent, not testable on the resources of a test run: an image of exactly 2^26 pixels (8192 x 8192) is the only input that tells `>` from `>=`, and accepting it allocates 3.5 GiB of tables. The sides of the limit are pinned by `TestLargeImageGoesWithoutTables` at 8193 x 8192. |

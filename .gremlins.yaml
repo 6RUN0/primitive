@@ -1,3 +1,3 @@
 ---
 unleash:
-  timeout-coefficient: 5
+  timeout-coefficient: 10

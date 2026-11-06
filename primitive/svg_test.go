@@ -155,6 +155,8 @@ func TestShapeSVGForms(t *testing.T) {
 		{"curve", &Quadratic{nil, 10, 20, 15, 18, 30, 21.5, 1, 1}, `<path a="b" d="M10 20q5-2 20 1.5"/>`},
 		{"rotated ellipse", &RotatedEllipse{nil, 1.5, 2, 3.25, 4, -30}, `<ellipse a="b" rx="3.25" ry="4" transform="translate(1.5 2) rotate(330)"/>`},
 		{"rotated ellipse past a turn", &RotatedEllipse{nil, 1, 2, 3, 4, 725.5}, `<ellipse a="b" rx="3" ry="4" transform="translate(1 2) rotate(5.5)"/>`},
+		{"rotated ellipse without turn", &RotatedEllipse{nil, 1, 2, 3, 4, 0}, `<ellipse a="b" rx="3" ry="4" transform="translate(1 2) rotate(0)"/>`},
+		{"rotated ellipse at a negative full turn", &RotatedEllipse{nil, 1, 2, 3, 4, -360}, `<ellipse a="b" rx="3" ry="4" transform="translate(1 2) rotate(0)"/>`},
 		{"rotated rectangle", &RotatedRectangle{nil, 1, 2, 3, 4, -30}, `<rect a="b" x="-.5" y="-.5" width="1" height="1" transform="translate(1 2) rotate(330) scale(3 4)"/>`},
 		{"rotated rectangle past a turn", &RotatedRectangle{nil, 1, 2, 3, 4, 725}, `<rect a="b" x="-.5" y="-.5" width="1" height="1" transform="translate(1 2) rotate(5) scale(3 4)"/>`},
 		{"ellipse", &Ellipse{nil, 1, 2, 3, 4, false}, `<ellipse a="b" cx="1" cy="2" rx="3" ry="4"/>`},

@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -138,6 +139,55 @@ func TestCLIRejectsInvalidArguments(t *testing.T) {
 				t.Errorf("panic in stderr: %s", result.stderr)
 			}
 		})
+	}
+}
+
+// TestCLIAcceptsBoundaryValues pins the edges of the accepted ranges: each value
+// passes argument validation and the run goes on to read the input, which is
+// absent, so that a check rejecting an edge value shows as a usage error.
+func TestCLIAcceptsBoundaryValues(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "absent.png")
+	output := filepath.Join(t.TempDir(), "output.png")
+	gifOutput := filepath.Join(filepath.Dir(output), "output.gif")
+	cases := []struct {
+		name      string
+		arguments []string
+	}{
+		{"alpha of zero", []string{"-o", output, "-a", "0"}},
+		{"alpha of 255", []string{"-o", output, "-a", "255"}},
+		{"mode of zero", []string{"-o", output, "-m", "0"}},
+		{"mode of eight", []string{"-o", output, "-m", "8"}},
+		{"interval of zero", []string{"-o", output, "-int", "0"}},
+		{"interval at the GIF limit", []string{"-o", output, "-int", "65535"}},
+		{"output size of one", []string{"-o", output, "-s", "1"}},
+		{"GIF size at the limit", []string{"-o", gifOutput, "-s", "65535"}},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			result := runCLI(t, append([]string{"-i", missing, "-n", "1"}, testCase.arguments...)...)
+			if !strings.Contains(result.stderr, "no such file") || strings.Contains(result.stderr, "ERROR:") {
+				t.Errorf("stderr %q, want the missing input and no usage error", result.stderr)
+			}
+		})
+	}
+}
+
+// TestCLIOneWorkerIsNotAllCores pins -j 1 end to end: a run with one worker must
+// not be widened to every core, which gives another picture for one seed.
+func TestCLIOneWorkerIsNotAllCores(t *testing.T) {
+	if runtime.NumCPU() < 2 {
+		t.Skip("one core: -j 1 and the default are the same run")
+	}
+	input := writeTestPNG(t, 24, 24)
+	render := func(extra ...string) string {
+		result := runCLI(t, append([]string{"-i", input, "-o", "-", "-n", "3", "-r", "24", "-s", "48", "-seed", "5"}, extra...)...)
+		if result.exitCode != 0 {
+			t.Fatalf("exit code %d: %s", result.exitCode, result.stderr)
+		}
+		return result.stdout
+	}
+	if render("-j", "1") == render() {
+		t.Error("-j 1 and the default gave one picture")
 	}
 }
 

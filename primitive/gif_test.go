@@ -8,6 +8,7 @@ import (
 	"image/gif"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -379,5 +380,89 @@ func TestGIFShowsStraightColors(t *testing.T) {
 	}
 	if got := shown.RGBAAt(0, 0); got != (color.RGBA{R: 128, A: 255}) {
 		t.Errorf("opaque dark red shows as %v", got)
+	}
+}
+
+// TestEncodeGIFAcceptsZeroDelay pins the lower end of the delay range: 0 is a
+// valid delay, and a check that rejects it refuses GIFs the format allows.
+func TestEncodeGIFAcceptsZeroDelay(t *testing.T) {
+	decoded := encodeTestGIF(t, buildBlockFrames(16, 12), 0, 0)
+	if decoded.Delay[0] != 0 {
+		t.Errorf("delay %d, want 0", decoded.Delay[0])
+	}
+}
+
+// TestCountColorsIncludesLastPixel pins the end of the pixel loop: a color that
+// only the last pixel has was missing from the palette and drawn as a neighbor.
+func TestCountColorsIncludesLastPixel(t *testing.T) {
+	picture := image.NewRGBA(image.Rect(0, 0, 2, 1))
+	picture.SetRGBA(0, 0, color.RGBA{R: 10, A: 255})
+	picture.SetRGBA(1, 0, color.RGBA{R: 20, A: 255})
+	want := []colorCount{{[3]uint8{10, 0, 0}, 1}, {[3]uint8{20, 0, 0}, 1}}
+	if got := countColors(picture); !slices.Equal(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
+// TestColorBoxSplitsAtMedianPixel pins the cut with an even number of equal
+// colors: each side gets half of the pixels, not three quarters on one side.
+func TestColorBoxSplitsAtMedianPixel(t *testing.T) {
+	colors := []colorCount{
+		{[3]uint8{10, 10, 10}, 1}, {[3]uint8{20, 20, 20}, 1},
+		{[3]uint8{30, 30, 30}, 1}, {[3]uint8{40, 40, 40}, 1},
+	}
+	first, second := newColorBox(colors).split()
+	if len(first.colors) != 2 || len(second.colors) != 2 {
+		t.Errorf("got %d and %d colors, want 2 and 2", len(first.colors), len(second.colors))
+	}
+}
+
+// TestColorBoxSplitsAlongWidestChannel pins that the widest spread picks the sort
+// channel: colors that vary in blue only must be cut by blue, not by the packed
+// value, which orders by red first.
+func TestColorBoxSplitsAlongWidestChannel(t *testing.T) {
+	low, middle, high := colorCount{[3]uint8{9, 0, 0}, 1}, colorCount{[3]uint8{5, 0, 50}, 1}, colorCount{[3]uint8{0, 0, 100}, 1}
+	first, second := newColorBox([]colorCount{low, middle, high}).split()
+	if !slices.Equal(first.colors, []colorCount{low, middle}) || !slices.Equal(second.colors, []colorCount{high}) {
+		t.Errorf("got %v and %v, want the two lowest blues first", first.colors, second.colors)
+	}
+}
+
+// TestColorBoxTiedSpreadsSplitAlongFirstChannel pins that equal spreads resolve to
+// the lowest channel: the palette order, and so the bytes of the GIF for a given
+// seed, must not depend on which equal channel wins.
+func TestColorBoxTiedSpreadsSplitAlongFirstChannel(t *testing.T) {
+	greenish, reddish := colorCount{[3]uint8{0, 10, 0}, 1}, colorCount{[3]uint8{10, 0, 0}, 1}
+	first, _ := newColorBox([]colorCount{reddish, greenish}).split()
+	if !slices.Equal(first.colors, []colorCount{greenish}) {
+		t.Errorf("first box %v, want the lowest red", first.colors)
+	}
+}
+
+// TestMedianCutSplitsFirstOfEqualErrors pins the choice between boxes of equal
+// squared error: the earlier one splits, so that the palette of a picture with
+// symmetric halves is the same on every run and every version.
+func TestMedianCutSplitsFirstOfEqualErrors(t *testing.T) {
+	picture := image.NewRGBA(image.Rect(0, 0, 4, 1))
+	for x, level := range []uint8{0, 10, 100, 110} {
+		picture.SetRGBA(x, 0, color.RGBA{R: level, G: level, B: level, A: 255})
+	}
+	want := color.Palette{color.RGBA{A: 255}, color.RGBA{R: 105, G: 105, B: 105, A: 255}, color.RGBA{R: 10, G: 10, B: 10, A: 255}}
+	if got := medianCutPalette(picture, 3); !slices.Equal(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
+// TestFramesKeepShapeThatGainsExactlyDelta pins the threshold as inclusive: the
+// shape that lowers the score by exactly scoreDelta is a frame, as the doc says.
+func TestFramesKeepShapeThatGainsExactlyDelta(t *testing.T) {
+	target := buildNoisyTarget(16, 16)
+	model := NewModel(target, MakeColor(AverageImageColor(target)), 32, 1, 3)
+	for step := 0; step < 3; step++ {
+		model.Step(ShapeTypeTriangle, 128, 0, 0.5)
+	}
+	model.Scores = []float64{9, 8, 7}
+	if got := len(model.Frames(1)); got != 4 {
+		t.Errorf("got %d frames, want the background and 3 shapes", got)
 	}
 }
