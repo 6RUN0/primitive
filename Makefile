@@ -20,7 +20,7 @@ MUTANTS_WORK := $(CURDIR)/.mutants
 
 .DEFAULT_GOAL := build
 
-.PHONY: check build test cover fuzz lint tidy vuln mutants release-gate
+.PHONY: check build test cover fuzz lint tidy vuln mutants release-gate examples
 
 check: lint tidy test cover fuzz vuln build
 
@@ -63,6 +63,15 @@ mutants:
 	base=$${BASE-origin/master}; cd $(MUTANTS_WORK)/src && GIT_DIR=$(CURDIR)/.git GIT_WORK_TREE=$(MUTANTS_WORK)/src GIT_OPTIONAL_LOCKS=0 \
 		$(GREMLINS) unleash --config .gremlins.yaml --workers $(MUTANTS_WORKERS) \
 		$${base:+--diff "$$base"} -o $(MUTANTS_WORK)/report.json
+
+examples: build
+	mkdir -p examples/output
+	for image in lenna monalisa owl pyramids; do \
+		for mode in 1 3 7; do \
+			./primitive.bin -i examples/$$image.png -o examples/output/$$image-m$$mode.svg -n 200 -m $$mode -seed 1 -j 4; \
+		done; \
+	done
+	./primitive.bin -i examples/monalisa.png -o examples/output/monalisa.gif -n 100 -s 512 -seed 1 -j 4
 
 release-gate:
 	@case "$$TAG" in *[!0-9A-Za-z.-]*|'') echo "invalid tag: $$TAG" >&2; exit 1;; esac
