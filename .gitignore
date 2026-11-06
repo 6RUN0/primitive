@@ -12,11 +12,14 @@
 !/.goreleaser.yaml
 !/.gremlins.yaml
 !/*.go
+!/CHANGELOG.md
+!/CHANGELOG.ru.md
 !/CLAUDE.md
 !/Dockerfile
 !/LICENSE.md
 !/Makefile
 !/README.md
+!/README.ru.md
 !/docs/
 !/examples/
 !/go.mod

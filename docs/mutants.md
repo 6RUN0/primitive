@@ -33,10 +33,12 @@ so the value has to cover the slowdown of parallel workers.
 | 4 processes, 16 threads | 2.5 s |
 | 8 processes, 16 threads | 3.4 s |
 | 4 processes, pinned to 4 CPUs with `taskset -c 0-3` | 5.0 s |
+| `go test -count=1 ./primitive`, `nice -n 19 GOMAXPROCS=2`, load average 17 to 43 | 11.7 s |
 
-The worst case is 2.1 times the single run. `timeout-coefficient: 5` is that
-ratio with a margin of 2, rounded up: 4 workers on a runner with 4 CPUs do not
-time out, and a mutant that loops forever costs 5 baseline runs. Measure again
+The worst case is 5 times the single run: at a coefficient of 5 the limit is
+11.7 s, exactly that run. `timeout-coefficient: 10` is that ratio with a margin
+of 2: a loaded machine does not time out and hide survivors as `TIMED OUT`, and
+a mutant that loops forever costs 10 baseline runs, about 25 s. Measure again
 with `go test -c ./primitive` and several copies of the binary when the test
 suite grows.
 
@@ -52,6 +54,9 @@ original goes to the table below, one row per mutant:
 - Why equivalent: the argument that no input can show a difference. "Not triaged"
   is not a reason.
 
+A survivor that only an input too large for a test run can show goes to "Survivors
+not testable", with that input and its cost.
+
 ## Equivalent survivors
 
 | File | Expression | Mutation | Why equivalent |
@@ -62,4 +67,9 @@ original goes to the table below, one row per mutant:
 | `primitive/svg.go` | `2*len(xs)` in `closedSVGPath` | ARITHMETIC_BASE | The expression is the capacity hint of `make`; `append` grows the slice and the path text does not depend on the capacity. |
 | `primitive/svg.go` | `c.A < common` in `findCommonAlpha` | CONDITIONALS_BOUNDARY | The comparison is reached with `count == commonCount`; at `c.A == common` the assignment stores the values the variables already hold. |
 | `primitive/tables.go` | `1<<32 - 1` in `maxTableWidth` | ARITHMETIC_BASE, INVERT_NEGATIVES | `(2^32 + 1) / 65025` and `(2^32 - 1) / 65025` both round down to 66051: 66051 x 65025 = 4294966275 and 66052 x 65025 = 4295031300 lie on both sides of either numerator. |
-| `primitive/tables.go` | `size.X*size.Y > maxTablePixels` in `newPixelTables` | CONDITIONALS_BOUNDARY | Not equivalent, not testable on the resources of a test run: an image of exactly 2^26 pixels (8192 x 8192) is the only input that tells `>` from `>=`, and accepting it allocates 3.5 GiB of tables. The sides of the limit are pinned by `TestLargeImageGoesWithoutTables` at 8193 x 8192. |
+
+## Survivors not testable
+
+| File | Expression | Mutation | Why not tested |
+| --- | --- | --- | --- |
+| `primitive/tables.go` | `size.X*size.Y > maxTablePixels` in `newPixelTables` | CONDITIONALS_BOUNDARY | Only an image of exactly 2^26 pixels (8192 x 8192) tells `>` from `>=`, and accepting it allocates 3.5 GiB of tables. The sides of the limit are pinned by `TestLargeImageGoesWithoutTables` at 8193 x 8192. |

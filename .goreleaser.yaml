@@ -36,6 +36,10 @@ archives:
     files:
       - LICENSE.md
       - README.md
+      - README.ru.md
+      - CHANGELOG.md
+      - CHANGELOG.ru.md
+      - docs/*
 
 checksum:
   name_template: checksums.txt

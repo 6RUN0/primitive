@@ -37,6 +37,14 @@ not update.
   with the fix, it then runs in plain `go test`.
 - Comments and test docstrings name the defect a test pins, never a plan stage.
 
+## Documentation
+
+- A change of behaviour updates both pairs in one commit: `README.md` with
+  `README.ru.md`, and `CHANGELOG.md` with `CHANGELOG.ru.md`, same blocks in the
+  same order. `CHANGELOG.md` is kept by hand under `[Unreleased]`; release notes
+  come from commit messages through `.goreleaser.yaml`, which does not read it.
+- A change of the search re-measures the tables of "CPU Load" in `README.md`.
+
 ## Gotchas
 
 - `go build` without `-o` fails: the package directory `primitive` has the name
